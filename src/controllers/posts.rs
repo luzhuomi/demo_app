@@ -7,7 +7,10 @@ use crate::{
         common::{ApiError, Page},
         posts::{CreatePost, PostDto, UpdatePost},
     },
-    models::_entities::posts::{ActiveModel, Column, Entity},
+    models::{
+        _entities::posts::{ActiveModel, Column, Entity},
+        posts::ensure_due_date_is_future,
+    },
 };
 
 /// Build a 404 response shaped as the [`ApiError`] envelope.
@@ -46,6 +49,9 @@ async fn get_one(State(ctx): State<AppContext>, Path(id): Path<i64>) -> Result<R
 
 #[debug_handler]
 async fn create(State(ctx): State<AppContext>, Json(params): Json<CreatePost>) -> Result<Response> {
+    if let Err(msg) = ensure_due_date_is_future(params.due_date.as_deref()) {
+        return bad_request(&msg);
+    }
     let item = ActiveModel {
         title: Set(params.title),
         published: Set(params.published),
@@ -65,6 +71,10 @@ async fn update(
     let Some(model) = Entity::find_by_id(id).one(&ctx.db).await? else {
         return Ok(not_found("post not found"));
     };
+
+    if let Err(msg) = ensure_due_date_is_future(params.due_date.as_deref()) {
+        return bad_request(&msg);
+    }
 
     let mut item = model.into_active_model();
     item.title = Set(params.title);
