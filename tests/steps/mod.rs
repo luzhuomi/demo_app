@@ -16,6 +16,7 @@ async fn posts_api_running(world: &mut PostsWorld) {
     )
     .expect("start the test server");
     world.server = Some(server);
+    world.ctx = Some(boot.app_context);
 }
 
 #[when("Anna checks the health endpoint")]

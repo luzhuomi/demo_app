@@ -54,6 +54,7 @@ mod tests {
             id: 1,
             title: "Sample".to_string(),
             published: Some(true),
+            due_date: None,
         }
     }
 

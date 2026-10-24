@@ -17,9 +17,10 @@ impl PostsWorld {
 
 #[given(expr = "the posts table contains a published post due in {int} days")]
 async fn seed_published_post_due_in_days(world: &mut PostsWorld, days: i64) {
-    // TODO(T-01): once the posts.due_date column exists, this seed must also
-    // set due_date = now + {days}. Until then the column does not exist and
-    // the API ignores the field, so the seed only establishes "that post".
+    // TODO(T-03): the posts.due_date column exists now (T-01), but the API
+    // does not persist due_date until T-03, so this seed cannot set it. When
+    // a task needs a stored due date (T-02 onwards), insert through SeaORM
+    // instead of the API — Q8 makes the API refuse past due dates anyway.
     let title = format!("seed published post due in {days} days");
     let res = world
         .server()
@@ -57,6 +58,60 @@ async fn create_post_with_due_date(world: &mut PostsWorld, title: String, due_da
             .expect("create response must be JSON");
         world.last_post = Some((body["id"].as_i64().expect("post id"), title.to_string()));
     }
+}
+
+#[when(regex = r#"Anna creates a post titled "(.+)" without a due date"#)]
+async fn create_post_without_due_date(world: &mut PostsWorld, title: String) {
+    let res = world
+        .server()
+        .post("/api/posts")
+        .json(&json!({ "title": title }))
+        .await;
+    world.record_response(res);
+    if world.last_status == Some(201) {
+        let body = world
+            .last_body
+            .clone()
+            .expect("create response must be JSON");
+        world.last_post = Some((body["id"].as_i64().expect("post id"), title));
+    }
+}
+
+#[then("the created post has no due date")]
+fn created_post_has_no_due_date(world: &mut PostsWorld) {
+    let body = world
+        .last_body
+        .as_ref()
+        .expect("create response must be JSON");
+    assert!(
+        body["due_date"].is_null(),
+        "the created post must have a null due date, got: {body}"
+    );
+}
+
+#[then("the stored post has no due date")]
+async fn stored_post_has_no_due_date(world: &mut PostsWorld) {
+    let ctx = world.ctx.as_ref().expect("the posts API is not running");
+    let (id, _) = world.last_post.clone().expect("no post was created");
+    // Raw SQL on purpose: this asserts the stored column, independent of the
+    // API and the entity codegen.
+    let stmt = sea_orm::Statement::from_sql_and_values(
+        sea_orm::DatabaseBackend::Postgres,
+        "SELECT due_date FROM posts WHERE id = $1",
+        [sea_orm::Value::from(id)],
+    );
+    let row =
+        <sea_orm::DatabaseConnection as sea_orm::ConnectionTrait>::query_one_raw(&ctx.db, stmt)
+            .await
+            .expect("querying the stored post");
+    let stored = row
+        .expect("the post row must exist")
+        .try_get::<Option<chrono::DateTime<chrono::FixedOffset>>>("", "due_date")
+        .expect("reading the due_date column");
+    assert!(
+        stored.is_none(),
+        "the stored post's due date must be NULL, got: {stored:?}"
+    );
 }
 
 #[then(expr = "no post titled {string} exists")]

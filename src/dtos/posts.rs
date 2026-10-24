@@ -20,9 +20,7 @@ impl From<crate::models::_entities::posts::Model> for PostDto {
             id: m.id,
             title: m.title,
             published: m.published,
-            // T-01 adds the posts.due_date column; until it exists the
-            // representation is null.
-            due_date: None,
+            due_date: m.due_date,
             created_at: m.created_at,
             updated_at: m.updated_at,
         }

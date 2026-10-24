@@ -18,10 +18,26 @@ Each entry follows the constitution's loop, in this order:
    `cargo fmt --all && cargo clippy --all-targets -- -D warnings && cargo test`.
 4. **BDD green** — re-run Cucumber; the scenario passes.
 
+## Status legend
+
+Every entry carries a `Status:` line, updated as stages complete:
+
+- ⬜ not started
+- 🟡 in progress — names the stage reached (e.g. "BDD red", "TDD green")
+- ✅ complete — all four stages verified
+
+Last updated: 2026-10-24. Runner state: `tests/cucumber.rs` runs the T-01 and
+T-12 scenarios (name filter, `max_concurrent_scenarios(1)` — each boot
+recreates the test schema, so scenarios must not overlap); the smoke run is
+commented out.
+
 ## Prerequisites (one task each, before T-01)
 
 ### P-01 · Point the Cucumber harness at the real app
 - FR: constitution (BDD harness)
+- Status: ✅ complete — `PostsWorld` holds a real `TestServer` (loco
+  `boot_test` + axum-test); smoke scenario was green. Note: the smoke run is
+  currently commented out in `tests/cucumber.rs`.
 - BDD red: `tests/cucumber.rs` runs only `smoke.feature`; `PostsWorld` is a
   stub. Extend `PostsWorld` to hold a `TestServer` + `AppContext` (real HTTP,
   real DB, posts truncated between scenarios) and run
@@ -35,6 +51,13 @@ Each entry follows the constitution's loop, in this order:
 
 ### P-02 · Shared step definitions and world state
 - FR: infrastructure for T-01…T-24
+- Status: 🟡 in progress — steps exist for the T-12 and T-01 scenarios (seed
+  "due in N days", create/update-with-due-date, create-without-due-date,
+  `no post titled`, `unchanged`, `stored post has no due date`, status
+  assertions). The rest of the inventory lands with the tasks that need it.
+  Note: the seed step still does not set `due_date` — the API does not persist
+  it until T-03, so the seed must insert through SeaORM once a task needs a
+  stored due date.
 - Step definitions to land here (referenced by the entries below):
   - seeding: `the posts table contains a {published|unpublished} post due
     {int} {days|hours} {ago|in}` / `… with no due date` / `a post with null
@@ -53,6 +76,11 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-01 · A post created without a due date has a null due date
 - FR: RD-1 · `due_dates.feature:27-32`
+- Status: ✅ complete — all four stages verified: BDD red (4/5 steps passed,
+  failed on `column "due_date" does not exist`) → TDD red (`tests/requests/
+  posts.rs` failed with the same 42703 error) → TDD green (migration
+  `m20261024_100813_add_due_date_to_posts` + entity regen + `From<Model>`
+  maps `m.due_date`) → BDD green (5/5 steps).
 - BDD red: new steps `Anna creates a post titled {string} without a due date`,
   `the created post has no due date`, `the stored post has no due date` →
   scenario fails (no `due_date` in the DTO; column absent).
@@ -66,6 +94,10 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-02 · Post representations include due_date on list and detail
 - FR: RD-2 · `due_dates.feature:34-42`
+- Status: 🟡 in progress — TDD red+green done (unit test
+  `post_dto_exposes_due_date` green; `PostDto.due_date` present, mapped to
+  `None` pending T-01). BDD red/green not run: the scenario is not wired into
+  the runner.
 - BDD red: new steps `the posts table contains a published post due in 2 days`,
   `Anna lists posts`, `every post in the list has a due date field`,
   `Anna fetches that post`, `the post in the response has a due date field` →
@@ -78,6 +110,8 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-03 · A valid future due date is persisted and echoed on create and update
 - FR: RD-3 · `due_dates.feature:44-53`
+- Status: ⬜ not started — note: the create/update-with-due-date step text
+  already exists (from T-12).
 - BDD red: new steps `Anna creates a post titled {string} with a due date
   {string}` (value: RFC 3339 or relative, e.g. "2 days from now"),
   `the created post has a due date {string}`, `Anna updates that post with a
@@ -92,6 +126,7 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-04 · A null or omitted due date on update clears the due date
 - FR: RD-4 (+ Q5) · `due_dates.feature:55-64`
+- Status: ⬜ not started
 - BDD red: new steps `Anna updates that post setting the due date to null`,
   `Anna updates that post omitting the due date`, `the post in the response
   has no due date` → fails while omitted/null do not clear.
@@ -104,6 +139,7 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-05 · The overdue filter returns only published posts due in the past
 - FR: RD-5 (+ Q1, Q3) · `due_dates.feature:66-74`
+- Status: ⬜ not started
 - BDD red: new steps `the posts table contains an unpublished post due 2 days
   ago`, `the posts table contains a published post due 2 days ago`, `… a
   published post with no due date`, `Anna lists posts with the overdue filter`,
@@ -119,6 +155,7 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-06 · Listing without the overdue filter returns every post
 - FR: RD-6 · `due_dates.feature:76-84`
+- Status: ⬜ not started
 - BDD red: new step `the list contains {int} posts` → fails only if the
   filter leaks; expected red is the undefined step.
 - TDD red: `tests/requests` — mixed seed, GET list without `overdue` → all 4
@@ -129,6 +166,7 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-07 · The overdue filter applies before pagination
 - FR: RD-7 · `due_dates.feature:86-95`
+- Status: ⬜ not started
 - BDD red: new steps `the posts table contains a published post due 5 days
   ago`, `… due 1 day ago`, `Anna lists posts with the overdue filter and page
   size {int}`, `the total item count is {int}` → fails if filter is applied
@@ -141,6 +179,7 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-08 · Posts without a due date are never overdue
 - FR: RD-8 · `due_dates.feature:97-103`
+- Status: ⬜ not started
 - BDD red: new steps `the posts table contains an unpublished post with no due
   date`, `the list is empty` → expected red: undefined steps; passes once
   T-05's condition includes `due_date IS NOT NULL`.
@@ -152,6 +191,7 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-09 · Overdue is evaluated in the viewer's timezone
 - FR: RD-9 (+ Q1, Q2) · `due_dates.feature:105-111`
+- Status: ⬜ not started
 - BDD red: new steps `the posts table contains a published post due 5 hours
   ago`, `Anna lists posts with the overdue filter in timezone {string}`,
   `the list contains the post due 5 hours ago`, `the list does not contain the
@@ -166,6 +206,7 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-10 · An unknown timezone is rejected
 - FR: Q9 · `due_dates.feature:113-116`
+- Status: ⬜ not started
 - BDD red: reuses T-09's timezone step with `Mars/OlympusMons` → fails until
   validation exists.
 - TDD red: `tests/models/posts.rs` or `tests/requests` — unknown IANA zone →
@@ -176,6 +217,9 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-11 · An invalid due date is rejected and nothing is stored
 - FR: RD-10 · `due_dates.feature:118-128`
+- Status: ⬜ not started — note: the create-with-due-date step text already
+  exists (from T-12); T-12 deliberately left unparseable values passing
+  through, which is exactly what this task must turn red.
 - BDD red: reuses `Anna creates a post titled {string} with a due date
   {string}` with `not-a-date`, `2024-02-30T09:00:00Z`,
   `10000-01-01T00:00:00Z`; new step `no post titled {string} exists` → fails
@@ -190,6 +234,9 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-12 · A past due date is rejected on create and update
 - FR: Q8 · `due_dates.feature:130-138`
+- Status: ✅ complete — all four stages verified: BDD red (201-vs-400) →
+  TDD red (`ensure_due_date_is_future` missing) → TDD green (3 lib tests
+  pass) → BDD green (8/8 steps pass).
 - BDD red: reuses create/update-with-due-date steps with
   `2020-01-01T00:00:00Z`; new step `the stored post's due date is unchanged`
   → fails (past values currently stored).
@@ -202,6 +249,7 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-13 · An invalid JSON body is rejected and nothing is stored
 - FR: RD-11 · `due_dates.feature:140-144`
+- Status: ⬜ not started
 - BDD red: new steps `Anna sends {string} as the create body`, `no post was
   created` → expected red: undefined steps; behavior likely already 400.
 - TDD red: `tests/requests` — POST create with a non-JSON body → 400, zero
@@ -211,6 +259,7 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-14 · A non-boolean overdue parameter is rejected
 - FR: RD-12 · `due_dates.feature:146-149`
+- Status: ⬜ not started
 - BDD red: new step `Anna lists posts with overdue set to {string}` with
   `banana` → fails (param unvalidated).
 - TDD red: `tests/requests` — `?overdue=banana` → 400 `ApiError`.
@@ -220,6 +269,7 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-15 · overdue=false is rejected as an invalid value
 - FR: Q4 (+ RD-12) · `due_dates.feature:151-154`
+- Status: ⬜ not started
 - BDD red: reuses T-14's step with `false` → fails until `"false"` is also
   rejected.
 - TDD red: `tests/requests` — `?overdue=false` → 400.
@@ -229,6 +279,7 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-16 · An overdue query matching nothing returns an empty page
 - FR: RD-13 · `due_dates.feature:156-162`
+- Status: ⬜ not started
 - BDD red: reuses overdue-filter steps + `the list is empty` + `the total item
   count is 0` → expected red: undefined assertion steps.
 - TDD red: `tests/requests` — seed only a future-due post; `?overdue=true` →
@@ -239,6 +290,7 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-17 · Non-existent post ids return 404 on get, update and delete
 - FR: RD-14 · `due_dates.feature:164-171`
+- Status: ⬜ not started
 - BDD red: new steps `Anna fetches post {int}`, `Anna updates post {int} with
   the title {string}`, `Anna deletes post {int}` → expected red: undefined
   steps; 404 behavior already exists.
@@ -250,6 +302,7 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-18 · Requests that use no new parameter keep working as before
 - FR: RD-15 (+ Q7 ordering note) · `due_dates.feature:173-181`
+- Status: ⬜ not started
 - BDD red: new step `the list response has the pagination fields` → expected
   red: undefined step.
 - TDD red: `tests/requests` — GET list without new params → 200 with
@@ -262,6 +315,7 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-19 · Post representations carry a computed overdue flag
 - FR: Q6 (+ Q1, Q3, Q10 predicate) · `due_dates.feature:183-194`
+- Status: ⬜ not started
 - BDD red: new steps `the published post due 2 days ago has the overdue flag
   true`, `… due in 2 days … false`, `… with no due date … false`,
   `the unpublished post due 2 days ago has the overdue flag false` → fails
@@ -275,6 +329,7 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-20 · Post representations carry a publication bool
 - FR: Q10, Q11 (+ Q6) · `due_dates.feature:196-205`
+- Status: ⬜ not started
 - BDD red: new steps `the posts table contains a post with null published`,
   `the published post has is_published true`, `the unpublished post has
   is_published false`, `the post with null published has is_published false`
@@ -288,6 +343,7 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-21 · Lists are ordered by due date by default, posts without a due date last
 - FR: Q7 · `due_dates.feature:207-213`
+- Status: ⬜ not started
 - BDD red: new steps `the posts table contains a published post due in 5 days`,
   `the list is in due date order with posts without a due date last` → fails
   (current order is `id` asc).
@@ -299,6 +355,7 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-22 · sort_by=id restores id ordering
 - FR: Q7 · `due_dates.feature:215-221`
+- Status: ⬜ not started
 - BDD red: new steps `Anna lists posts with sort_by set to {string}`, `the list
   is in id order` → fails (param unknown).
 - TDD red: `tests/models/posts.rs` — `?sort_by=id` → rows in `id` asc for a
@@ -309,6 +366,7 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-23 · An invalid sort_by value is rejected
 - FR: Q7 · `due_dates.feature:223-226`
+- Status: ⬜ not started
 - BDD red: reuses T-22's step with `banana` → fails until validation exists.
 - TDD red: `tests/requests` — `?sort_by=banana` → 400 `ApiError`.
 - TDD green: `sort_by` parsing accepts only `due_date` | `id`; else
@@ -317,6 +375,7 @@ Each entry follows the constitution's loop, in this order:
 
 ### T-24 · The overdue list is ordered most overdue first
 - FR: Q7 (+ RD-7) · `due_dates.feature:228-234`
+- Status: ⬜ not started
 - BDD red: new step `the list is most overdue first` (seed order deliberately
   differs from id order) → fails if the filtered list keeps id order.
 - TDD red: `tests/models/posts.rs` — `?overdue=true` with seeds due 1d/5d/2d
@@ -354,3 +413,10 @@ Each entry follows the constitution's loop, in this order:
 | Q10, Q11 | T-20 |
 
 24 scenarios, 24 entries; every RD-1…RD-15 covered.
+
+## Snapshot (as of 2026-10-24)
+
+- ✅ complete: P-01, T-01, T-12
+- 🟡 in progress: P-02 (steps for T-01/T-12 only), T-02 (TDD green; BDD loop
+  not run)
+- ⬜ not started: T-03…T-11, T-13…T-24
