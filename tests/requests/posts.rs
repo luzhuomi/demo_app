@@ -1,6 +1,9 @@
-use demo_app::app::App;
+use chrono::SubsecRound;
+use demo_app::{app::App, models::_entities::posts};
 use loco_rs::testing::prelude::*;
-use sea_orm::{ConnectionTrait, DatabaseBackend, Statement, Value};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseBackend, Statement, Value,
+};
 use serial_test::serial;
 
 /// RD-1 (specs/due-dates.md, T-01): a post created without a due date keeps a
@@ -42,6 +45,77 @@ async fn post_created_without_due_date_stores_null() {
         assert!(
             stored.is_none(),
             "the stored due date must be NULL, got: {stored:?}"
+        );
+    })
+    .await;
+}
+
+/// Read a JSON RFC 3339 timestamp as UTC.
+fn rfc3339_utc(value: &serde_json::Value) -> chrono::DateTime<chrono::Utc> {
+    value
+        .as_str()
+        .unwrap_or_else(|| panic!("due_date must be an RFC 3339 string (RD-2), got: {value}"))
+        .parse::<chrono::DateTime<chrono::FixedOffset>>()
+        .expect("due_date must parse as RFC 3339 (RD-2)")
+        .with_timezone(&chrono::Utc)
+}
+
+/// RD-2 (specs/due-dates.md, T-02): the list and the detail representation
+/// both carry `due_date` — the stored instant as an RFC 3339 timestamp when
+/// the row has one.
+#[tokio::test]
+#[serial]
+async fn post_representations_include_due_date() {
+    request::<App, _, _>(|request, ctx| async move {
+        // The API does not persist due_date until T-03, so this row is
+        // inserted directly. Microsecond precision: that is what the column
+        // stores, so the round trip can be compared exactly.
+        let due_utc = (chrono::Utc::now() + chrono::Duration::days(2))
+            .naive_utc()
+            .trunc_subsecs(6)
+            .and_utc();
+        let seeded = posts::ActiveModel {
+            title: Set("has a due date".to_string()),
+            published: Set(Some(true)),
+            due_date: Set(Some(due_utc.into())),
+            ..Default::default()
+        }
+        .insert(&ctx.db)
+        .await
+        .expect("seed a post with a due date");
+
+        let res = request.get("/api/posts").await;
+        assert_eq!(res.status_code(), 200, "listing posts must succeed");
+        let body = res.json::<serde_json::Value>();
+        let items = body["items"].as_array().expect("items array").clone();
+        assert!(!items.is_empty(), "the list must contain the seeded post");
+        for post in &items {
+            assert!(
+                post.get("due_date").is_some(),
+                "a listed post must carry a due_date field (RD-2), got: {post}"
+            );
+        }
+        let listed = items
+            .iter()
+            .find(|p| p["id"] == serde_json::json!(seeded.id))
+            .expect("the seeded post must be in the list");
+        assert_eq!(
+            rfc3339_utc(&listed["due_date"]),
+            due_utc,
+            "the list must echo the stored due date (RD-2)"
+        );
+
+        let res = request.get(&format!("/api/posts/{}", seeded.id)).await;
+        assert_eq!(res.status_code(), 200, "fetching the post must succeed");
+        let body = res.json::<serde_json::Value>();
+        assert!(
+            body.get("due_date").is_some(),
+            "a fetched post must carry a due_date field (RD-2), got: {body}"
+        );
+        assert_eq!(
+            rfc3339_utc(&body["due_date"]),
+            due_utc,
+            "the detail must echo the stored due date (RD-2)"
         );
     })
     .await;

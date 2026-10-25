@@ -26,10 +26,10 @@ Every entry carries a `Status:` line, updated as stages complete:
 - 🟡 in progress — names the stage reached (e.g. "BDD red", "TDD green")
 - ✅ complete — all four stages verified
 
-Last updated: 2026-10-24. Runner state: `tests/cucumber.rs` runs the T-01 and
-T-12 scenarios (name filter, `max_concurrent_scenarios(1)` — each boot
-recreates the test schema, so scenarios must not overlap); the smoke run is
-commented out.
+Last updated: 2026-10-24. Runner state: `tests/cucumber.rs` runs the scenarios
+whose FR tags are in `STEPPED_TASKS` (currently `RD-1`, `RD-2`, `Q8`), with
+`max_concurrent_scenarios(1)` — each boot recreates the test schema, so
+scenarios must not overlap. The smoke run is commented out.
 
 ## Prerequisites (one task each, before T-01)
 
@@ -51,13 +51,13 @@ commented out.
 
 ### P-02 · Shared step definitions and world state
 - FR: infrastructure for T-01…T-24
-- Status: 🟡 in progress — steps exist for the T-12 and T-01 scenarios (seed
-  "due in N days", create/update-with-due-date, create-without-due-date,
-  `no post titled`, `unchanged`, `stored post has no due date`, status
-  assertions). The rest of the inventory lands with the tasks that need it.
-  Note: the seed step still does not set `due_date` — the API does not persist
-  it until T-03, so the seed must insert through SeaORM once a task needs a
-  stored due date.
+- Status: 🟡 in progress — steps exist for the T-12, T-01 and T-02 scenarios
+  (seed "published post due in N days" — now inserted through SeaORM with a
+  real `due_date`, since the API cannot store one until T-03;
+  create/update-with-due-date; create-without-due-date; `Anna lists posts`;
+  `Anna fetches that post`; field/`no post titled`/`unchanged`/
+  `stored post has no due date` assertions; a `list_items` world helper). The
+  rest of the inventory lands with the tasks that need it.
 - Step definitions to land here (referenced by the entries below):
   - seeding: `the posts table contains a {published|unpublished} post due
     {int} {days|hours} {ago|in}` / `… with no due date` / `a post with null
@@ -94,18 +94,22 @@ commented out.
 
 ### T-02 · Post representations include due_date on list and detail
 - FR: RD-2 · `due_dates.feature:34-42`
-- Status: 🟡 in progress — TDD red+green done (unit test
-  `post_dto_exposes_due_date` green; `PostDto.due_date` present, mapped to
-  `None` pending T-01). BDD red/green not run: the scenario is not wired into
-  the runner.
-- BDD red: new steps `the posts table contains a published post due in 2 days`,
-  `Anna lists posts`, `every post in the list has a due date field`,
-  `Anna fetches that post`, `the post in the response has a due date field` →
-  scenario fails until list/detail carry the field.
+- Status: ✅ complete — BDD green (7/7 steps) and the integration test
+  `post_representations_include_due_date` passes. **No red of its own**: RD-2
+  was already delivered by T-01 (the `From<Model>` mapping) on top of the
+  pre-existing `PostDto` use in `list`/`get_one`, so the scenario went green
+  as soon as its steps existed. Teeth verified by mutation: reverting the
+  mapping to `due_date: None` turns the test red with
+  `due_date must be an RFC 3339 string (RD-2), got: null`. Kept as a
+  regression lock, as planned.
+- BDD red: new steps `the posts table contains a published post due in 2 days`
+  (now inserts through SeaORM with a real `due_date`), `Anna lists posts`,
+  `every post in the list has a due date field`, `Anna fetches that post`,
+  `the post in the response has a due date field`.
 - TDD red: `tests/requests` — GET list and GET detail; both JSON bodies
-  contain the `due_date` key.
-- TDD green: `PostDto` already carries it from T-01; ensure list and detail
-  both serialize via `PostDto`.
+  contain the `due_date` key and echo the stored instant as RFC 3339.
+- TDD green: none needed — `list` (`Page<PostDto>::from_query`) and `get_one`
+  already map through `PostDto`.
 - BDD green: scenario passes.
 
 ### T-03 · A valid future due date is persisted and echoed on create and update
@@ -236,7 +240,9 @@ commented out.
 - FR: Q8 · `due_dates.feature:130-138`
 - Status: ✅ complete — all four stages verified: BDD red (201-vs-400) →
   TDD red (`ensure_due_date_is_future` missing) → TDD green (3 lib tests
-  pass) → BDD green (8/8 steps pass).
+  pass) → BDD green (8/8 steps pass). Note: its `the stored post's due date
+  is unchanged` assertion was vacuous until T-02 made the seed store a real
+  `due_date`; it is now a real check and still passes.
 - BDD red: reuses create/update-with-due-date steps with
   `2020-01-01T00:00:00Z`; new step `the stored post's due date is unchanged`
   → fails (past values currently stored).
@@ -416,7 +422,8 @@ commented out.
 
 ## Snapshot (as of 2026-10-24)
 
-- ✅ complete: P-01, T-01, T-12
-- 🟡 in progress: P-02 (steps for T-01/T-12 only), T-02 (TDD green; BDD loop
-  not run)
+- ✅ complete: P-01, T-01, T-02, T-12
+- 🟡 in progress: P-02 (steps for T-01/T-02/T-12 only)
 - ⬜ not started: T-03…T-11, T-13…T-24
+- BDD: 3 of 24 scenarios green (`cargo test --test cucumber`), 31 integration
+  + 3 unit tests green.

@@ -41,22 +41,20 @@ async fn main() {
     // Phase 1 smoke feature (harness plumbing).
     // PostsWorld::run("tests/features/smoke.feature").await;
 
-    // BDD red for T-01 (specs/due_dates/tasks.md): step definitions exist
-    // only for the T-01 and T-12 scenarios — one task per prompt. The other
-    // scenarios in due_dates.feature have no steps yet by design, so the run
-    // is filtered to those scenarios.
-    //
+    // Steps exist only for the tasks listed here — one task per prompt. The
+    // other scenarios in due_dates.feature have no steps yet by design, so
+    // the run is filtered by the FR tags those tasks' scenarios carry.
+    const STEPPED_TASKS: [&str; 3] = ["RD-1", "RD-2", "Q8"];
     // One concurrent scenario at a time: each boot recreates the test schema
     // (config/test.yaml), so concurrent scenarios would wipe each other's
     // data and race on the seaql_migrations table.
     PostsWorld::cucumber()
         .max_concurrent_scenarios(1)
         .filter_run("tests/features/due_dates.feature", |_, _, scenario| {
-            matches!(
-                scenario.name.as_str(),
-                "A past due date is rejected on create and update"
-                    | "A post created without a due date has a null due date"
-            )
+            scenario
+                .tags
+                .iter()
+                .any(|tag| STEPPED_TASKS.contains(&tag.as_str()))
         })
         .await;
 }
