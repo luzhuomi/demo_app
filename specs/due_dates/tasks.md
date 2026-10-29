@@ -26,9 +26,10 @@ Every entry carries a `Status:` line, updated as stages complete:
 - 🟡 in progress — names the stage reached (e.g. "BDD red", "TDD green")
 - ✅ complete — all four stages verified
 
-Last updated: 2026-10-24. Runner state: `tests/cucumber.rs` runs the scenarios
-whose FR tags are in `STEPPED_TASKS` (currently `RD-1`, `RD-2`, `Q8`), with
-`max_concurrent_scenarios(1)` — each boot recreates the test schema, so
+Last updated: 2026-10-29 (T-03 verified independently; no status change).
+Runner state: `tests/cucumber.rs` runs the scenarios
+whose FR tags are in `STEPPED_TASKS` (currently `RD-1`, `RD-2`, `RD-3`, `Q8`),
+with `max_concurrent_scenarios(1)` — each boot recreates the test schema, so
 scenarios must not overlap. The smoke run is commented out.
 
 ## Prerequisites (one task each, before T-01)
@@ -51,12 +52,14 @@ scenarios must not overlap. The smoke run is commented out.
 
 ### P-02 · Shared step definitions and world state
 - FR: infrastructure for T-01…T-24
-- Status: 🟡 in progress — steps exist for the T-12, T-01 and T-02 scenarios
-  (seed "published post due in N days" — now inserted through SeaORM with a
-  real `due_date`, since the API cannot store one until T-03;
-  create/update-with-due-date; create-without-due-date; `Anna lists posts`;
+- Status: 🟡 in progress — steps exist for the T-12, T-01, T-02 and T-03
+  scenarios (seed "published post due in N days" — now inserted through
+  SeaORM with a real `due_date`, since the API could not store one before
+  T-03; create/update-with-due-date, with "N days from now" resolved to a
+  real instant; create-without-due-date; `Anna lists posts`;
   `Anna fetches that post`; field/`no post titled`/`unchanged`/
-  `stored post has no due date` assertions; a `list_items` world helper). The
+  `stored post has no due date`/due-date-value assertions; a `list_items`
+  world helper). The
   rest of the inventory lands with the tasks that need it.
 - Step definitions to land here (referenced by the entries below):
   - seeding: `the posts table contains a {published|unpublished} post due
@@ -114,8 +117,16 @@ scenarios must not overlap. The smoke run is commented out.
 
 ### T-03 · A valid future due date is persisted and echoed on create and update
 - FR: RD-3 · `due_dates.feature:44-53`
-- Status: ⬜ not started — note: the create/update-with-due-date step text
-  already exists (from T-12).
+- Status: ✅ complete — all four stages verified: BDD red (failed at
+  `the created post has a due date 2 days from now` — response had
+  `due_date: null`) → TDD red (`future_due_date_is_persisted_and_echoed_on_
+  create_and_update` failed with `got: null`) → TDD green (`parse_due_date`
+  in the model; create/update handlers `Set(parse_due_date(...))`; `PostDto`
+  already echoed it via T-01's mapping) → BDD green (8/8 steps). Note: the
+  create/update-with-due-date steps now resolve "N days from now" to a real
+  RFC 3339 instant (literal values still pass through untouched, keeping
+  T-12's red intact). An omitted `due_date` on update now stores NULL —
+  Q5's semantics arrive formally with T-04.
 - BDD red: new steps `Anna creates a post titled {string} with a due date
   {string}` (value: RFC 3339 or relative, e.g. "2 days from now"),
   `the created post has a due date {string}`, `Anna updates that post with a
@@ -223,7 +234,11 @@ scenarios must not overlap. The smoke run is commented out.
 - FR: RD-10 · `due_dates.feature:118-128`
 - Status: ⬜ not started — note: the create-with-due-date step text already
   exists (from T-12); T-12 deliberately left unparseable values passing
-  through, which is exactly what this task must turn red.
+  through, which is exactly what this task must turn red. Since T-03 the
+  concrete red is precise: `parse_due_date` (`src/models/posts.rs`) maps an
+  unparseable value to `None`, so the API answers 201/200 with
+  `due_date: null` instead of 400 — the fix belongs in that function, which
+  `ensure_due_date_is_future` can then be folded into (both parse RFC 3339).
 - BDD red: reuses `Anna creates a post titled {string} with a due date
   {string}` with `not-a-date`, `2024-02-30T09:00:00Z`,
   `10000-01-01T00:00:00Z`; new step `no post titled {string} exists` → fails
@@ -420,10 +435,10 @@ scenarios must not overlap. The smoke run is commented out.
 
 24 scenarios, 24 entries; every RD-1…RD-15 covered.
 
-## Snapshot (as of 2026-10-24)
+## Snapshot (as of 2026-10-26)
 
-- ✅ complete: P-01, T-01, T-02, T-12
-- 🟡 in progress: P-02 (steps for T-01/T-02/T-12 only)
-- ⬜ not started: T-03…T-11, T-13…T-24
-- BDD: 3 of 24 scenarios green (`cargo test --test cucumber`), 31 integration
+- ✅ complete: P-01, T-01, T-02, T-03, T-12
+- 🟡 in progress: P-02 (steps for T-01/T-02/T-03/T-12 only)
+- ⬜ not started: T-04…T-11, T-13…T-24
+- BDD: 4 of 24 scenarios green (`cargo test --test cucumber`), 32 integration
   + 3 unit tests green.

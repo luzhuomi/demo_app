@@ -44,7 +44,7 @@ async fn main() {
     // Steps exist only for the tasks listed here — one task per prompt. The
     // other scenarios in due_dates.feature have no steps yet by design, so
     // the run is filtered by the FR tags those tasks' scenarios carry.
-    const STEPPED_TASKS: [&str; 3] = ["RD-1", "RD-2", "Q8"];
+    const STEPPED_TASKS: [&str; 4] = ["RD-1", "RD-2", "RD-3", "Q8"];
     // One concurrent scenario at a time: each boot recreates the test schema
     // (config/test.yaml), so concurrent scenarios would wipe each other's
     // data and race on the seaql_migrations table.

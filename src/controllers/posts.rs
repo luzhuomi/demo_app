@@ -9,7 +9,7 @@ use crate::{
     },
     models::{
         _entities::posts::{ActiveModel, Column, Entity},
-        posts::ensure_due_date_is_future,
+        posts::{ensure_due_date_is_future, parse_due_date},
     },
 };
 
@@ -55,6 +55,7 @@ async fn create(State(ctx): State<AppContext>, Json(params): Json<CreatePost>) -
     let item = ActiveModel {
         title: Set(params.title),
         published: Set(params.published),
+        due_date: Set(parse_due_date(params.due_date.as_deref())),
         ..Default::default()
     };
     let item = item.insert(&ctx.db).await?;
@@ -79,6 +80,7 @@ async fn update(
     let mut item = model.into_active_model();
     item.title = Set(params.title);
     item.published = Set(params.published);
+    item.due_date = Set(parse_due_date(params.due_date.as_deref()));
     let item = item.update(&ctx.db).await?;
 
     Ok(Json(PostDto::from(item)).into_response())

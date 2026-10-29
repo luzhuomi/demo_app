@@ -27,6 +27,13 @@ impl ActiveModel {}
 // implement your custom finders, selectors oriented logic here
 impl Entity {}
 
+/// Parse the wire representation of a due date (RFC 3339, RD-3). Unparseable
+/// values currently become `None` — rejecting them with a 400 is T-11 (RD-10),
+/// which is why T-12's pass-through of invalid values still holds.
+pub fn parse_due_date(raw: Option<&str>) -> Option<DateTimeWithTimeZone> {
+    raw.and_then(|raw| chrono::DateTime::parse_from_rfc3339(raw).ok())
+}
+
 /// Domain rule (Q8, specs/due-dates.md): a due date must not be in the past
 /// at write time; the UTC clock decides (Q9). Format validation (RD-10)
 /// arrives with T-11 — unparseable values pass through for now.

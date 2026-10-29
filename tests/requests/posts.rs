@@ -50,13 +50,75 @@ async fn post_created_without_due_date_stores_null() {
     .await;
 }
 
-/// Read a JSON RFC 3339 timestamp as UTC.
-fn rfc3339_utc(value: &serde_json::Value) -> chrono::DateTime<chrono::Utc> {
+/// RD-3 (specs/due-dates.md, T-03): a valid future `due_date` is persisted
+/// and echoed on create, on update, and in the detail afterwards.
+#[tokio::test]
+#[serial]
+async fn future_due_date_is_persisted_and_echoed_on_create_and_update() {
+    request::<App, _, _>(|request, _ctx| async move {
+        // Microsecond precision, as in the T-02 test: that is what the column
+        // stores, so the round trip can be compared exactly.
+        let due_2d = (chrono::Utc::now() + chrono::Duration::days(2))
+            .naive_utc()
+            .trunc_subsecs(6)
+            .and_utc();
+        let res = request
+            .post("/api/posts")
+            .json(&serde_json::json!({
+                "title": "launch",
+                "due_date": due_2d.to_rfc3339(),
+            }))
+            .await;
+
+        assert_eq!(res.status_code(), 201, "create must succeed");
+        let body = res.json::<serde_json::Value>();
+        assert_eq!(
+            rfc3339_utc(&body["due_date"], "the create response due_date"),
+            due_2d,
+            "the create response must echo the due date (RD-3)"
+        );
+        let id = body["id"].as_i64().expect("post id");
+
+        let due_5d = (chrono::Utc::now() + chrono::Duration::days(5))
+            .naive_utc()
+            .trunc_subsecs(6)
+            .and_utc();
+        let res = request
+            .put(&format!("/api/posts/{id}"))
+            .json(&serde_json::json!({
+                "title": "launch",
+                "due_date": due_5d.to_rfc3339(),
+            }))
+            .await;
+
+        assert_eq!(res.status_code(), 200, "update must succeed");
+        let body = res.json::<serde_json::Value>();
+        assert_eq!(
+            rfc3339_utc(&body["due_date"], "the update response due_date"),
+            due_5d,
+            "the update response must echo the new due date (RD-3)"
+        );
+
+        let res = request.get(&format!("/api/posts/{id}")).await;
+        assert_eq!(res.status_code(), 200, "fetching the post must succeed");
+        let body = res.json::<serde_json::Value>();
+        assert_eq!(
+            rfc3339_utc(&body["due_date"], "the detail due_date"),
+            due_5d,
+            "the detail must return the updated due date (RD-3)"
+        );
+    })
+    .await;
+}
+
+/// Read a JSON RFC 3339 timestamp as UTC. `what` names the field under test so
+/// a failure points at the requirement it belongs to.
+fn rfc3339_utc(value: &serde_json::Value, what: &str) -> chrono::DateTime<chrono::Utc> {
     value
         .as_str()
-        .unwrap_or_else(|| panic!("due_date must be an RFC 3339 string (RD-2), got: {value}"))
+        .unwrap_or_else(|| panic!("{what} must be an RFC 3339 string, got: {value}"))
         .parse::<chrono::DateTime<chrono::FixedOffset>>()
-        .expect("due_date must parse as RFC 3339 (RD-2)")
+        .unwrap_or_else(|e| panic!("{what} must parse as RFC 3339: {e}, got: {value}"))
         .with_timezone(&chrono::Utc)
 }
 
@@ -100,7 +162,7 @@ async fn post_representations_include_due_date() {
             .find(|p| p["id"] == serde_json::json!(seeded.id))
             .expect("the seeded post must be in the list");
         assert_eq!(
-            rfc3339_utc(&listed["due_date"]),
+            rfc3339_utc(&listed["due_date"], "the listed due_date"),
             due_utc,
             "the list must echo the stored due date (RD-2)"
         );
@@ -113,7 +175,7 @@ async fn post_representations_include_due_date() {
             "a fetched post must carry a due_date field (RD-2), got: {body}"
         );
         assert_eq!(
-            rfc3339_utc(&body["due_date"]),
+            rfc3339_utc(&body["due_date"], "the detail due_date"),
             due_utc,
             "the detail must echo the stored due date (RD-2)"
         );

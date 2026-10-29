@@ -5,6 +5,41 @@ use serde_json::{json, Value};
 use crate::PostsWorld;
 use cucumber::{given, then, when};
 
+/// Resolve a step's due-date expression: "N days from now" becomes a real
+/// RFC 3339 instant; anything else passes through unchanged (T-12's literal
+/// values, and later T-11's invalid ones).
+fn resolve_due_date(expr: &str) -> String {
+    if let Some(days) = expr
+        .strip_suffix(" days from now")
+        .and_then(|n| n.parse::<i64>().ok())
+    {
+        return (chrono::Utc::now() + chrono::Duration::days(days)).to_rfc3339();
+    }
+    expr.to_string()
+}
+
+/// Parse an RFC 3339 `due_date` from the last response body and compare it to
+/// the instant the step text expresses, within a 5-minute tolerance: the
+/// action step and the assertion step each compute "now" at their own moment
+/// (milliseconds apart), while the scenarios' dates differ by days.
+fn assert_response_due_date(world: &PostsWorld, expr: &str) {
+    let body = world.last_body.as_ref().expect("response must be JSON");
+    let actual = body["due_date"]
+        .as_str()
+        .unwrap_or_else(|| panic!("the response must carry a due date (RD-3), got: {body}"))
+        .parse::<chrono::DateTime<chrono::FixedOffset>>()
+        .unwrap_or_else(|e| panic!("due_date must be RFC 3339 (RD-3), got: {body}, {e}"));
+    let expected = resolve_due_date(expr)
+        .parse::<chrono::DateTime<chrono::FixedOffset>>()
+        .expect("the step's due date expression must resolve");
+    let delta = (actual - expected).num_seconds().abs();
+    assert!(
+        delta < 300,
+        "the response due date must be {expr} (RD-3), got: {}, {delta}s off",
+        body["due_date"]
+    );
+}
+
 impl PostsWorld {
     fn server(&self) -> &axum_test::TestServer {
         self.server.as_ref().expect("the posts API is not running")
@@ -48,6 +83,7 @@ async fn seed_published_post_due_in_days(world: &mut PostsWorld, days: i64) {
 
 #[when(regex = r#"Anna creates a post titled "(.+)" with a due date (.+)"#)]
 async fn create_post_with_due_date(world: &mut PostsWorld, title: String, due_date: String) {
+    let due_date = resolve_due_date(&due_date);
     let res = world
         .server()
         .post("/api/posts")
@@ -90,6 +126,18 @@ fn created_post_has_no_due_date(world: &mut PostsWorld) {
         body["due_date"].is_null(),
         "the created post must have a null due date, got: {body}"
     );
+}
+
+// Scoped to the relative form so it cannot collide with the RD-2 step
+// "the post in the response has a due date field".
+#[then(regex = r#"the created post has a due date (\d+ days from now)"#)]
+fn created_post_has_due_date(world: &mut PostsWorld, expr: String) {
+    assert_response_due_date(world, &expr);
+}
+
+#[then(regex = r#"the post in the response has a due date (\d+ days from now)"#)]
+fn fetched_post_has_due_date(world: &mut PostsWorld, expr: String) {
+    assert_response_due_date(world, &expr);
 }
 
 #[then("the stored post has no due date")]
@@ -170,6 +218,7 @@ async fn no_post_titled_exists(world: &mut PostsWorld, title: String) {
 
 #[when(regex = r#"Anna updates that post with a due date (.+)"#)]
 async fn update_that_post_with_due_date(world: &mut PostsWorld, due_date: String) {
+    let due_date = resolve_due_date(&due_date);
     let (id, title) = world.last_post.clone().expect("no post to update");
     let res = world.server().get(&format!("/api/posts/{id}")).await;
     world.record_response(res);
